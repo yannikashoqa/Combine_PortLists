@@ -4,7 +4,7 @@ Write-Host "################################  Start of Script  #################
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 $ErrorActionPreference = 'Stop'
 
-$Config = (Get-Content "$PSScriptRoot\DS-Config.json" -Raw) | ConvertFrom-Json
+$Config = (Get-Content "$PSScriptRoot\TM-Config.json" -Raw) | ConvertFrom-Json
 $Manager = $Config.MANAGER
 $APIKEY = $Config.APIKEY
 $PORT = $Config.PORT
@@ -38,14 +38,40 @@ try {
     }    
     $DS_PortLists = $DS_PortLists_REST.portLists
     $C1WS_PortLists = $C1WS_PortLists_REST.portLists
-    ForEach ($PortList in $C1WS_PortLists) {
-        ForEach ($Item in $DS_PortLists){
-            If ($PortList.name -eq $Item.name){
-                $DS_PortListName = $PortList.name 
-                $WS_PortListName = $Item.name
-                Write-Host "$DS_PortListName,  $WS_PortListName"
-                $NewPortList = $PortList.items + $Item.items | Sort-Object -Unique
-                Write-Host $NewPortList
+    ForEach ($DS_PortList in $DS_PortLists) {
+        ForEach ($C1WS_PortList in $C1WS_PortLists){
+            If ($DS_PortList.name -eq $C1WS_PortList.name){
+                $DS_PortListName = $DS_PortList.name 
+                $DS_PortListID = $DS_PortList.ID
+
+                $WS_PortListName = $C1WS_PortList.name
+                $WS_PortListID = $C1WS_PortList.ID
+
+                $New_PortList = $C1WS_PortList.items + $DS_PortList.items | Sort-Object -Unique
+                $New_PortList_Payload = @{
+                    "name"=$WS_PortListName
+                    "items"=$New_PortList
+                }
+                $New_PortList_Payload_Json = $New_PortList_Payload | ConvertTo-Json
+                $C1WS_PortLists_Post_URI = $C1WS_PortLists_URI + "/" + $WS_PortListID
+                try {
+                    $Update_C1WS_PortLists = Invoke-RestMethod -Uri $C1WS_PortLists_Post_URI -Method Post -Headers $C1WS_headers -Body $New_PortList_Payload_Json -SkipCertificateCheck 
+                }
+                catch {
+                    Write-Host "[ERROR]	Failed to update PortList:	$_"
+                    Write-Host "Please manually update this PortList:  $WS_PortListName"
+                    Continue
+                }
+
+                $DS_PortLists_Post_URI = $DS_PortLists_URI + "/" + $DS_PortListID
+                try {
+                    $Update_DS_PortLists = Invoke-RestMethod -Uri $DS_PortLists_Post_URI -Method Post -Headers $DS_headers -Body $New_PortList_Payload_Json -SkipCertificateCheck 
+                }
+                catch {
+                    Write-Host "[ERROR]	Failed to update PortList:	$_"
+                    Write-Host "Please manually update this PortList:  $DS_PortListName"
+                    Continue
+                }
             }
         }
     } 
